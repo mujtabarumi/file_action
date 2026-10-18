@@ -71,28 +71,39 @@ internal sealed class Agent : IDisposable
             ShowHelp();
     }
 
-    /// <summary>Installs the event tap, asking for the Accessibility permission and retrying until it is granted.</summary>
+    /// <summary>
+    /// Installs the event tap once the Accessibility permission is granted. macOS lets an app without it create
+    /// a tap that silently never receives an event, so the permission itself is checked, and the tap is created
+    /// again when it is granted later (a tap made before the grant stays dead).
+    /// </summary>
     private void StartTap()
     {
-        if (_tap.Start())
+        if (Permissions.Granted && _tap.Start())
         {
-            _menu.PermissionMissing = false;
-            Log("event tap installed: the drag gesture works");
+            OnTapReady("event tap installed: the drag gesture works");
             return;
         }
         _menu.PermissionMissing = true;
-        Log("event tap refused: waiting for the Accessibility permission");
+        Log("no Accessibility permission for this build: the drag gesture is off until it is granted");
         Permissions.Request();
-        _retry ??= new DispatcherTimer(TimeSpan.FromSeconds(3), DispatcherPriority.Background, (_, _) =>
+        _retry ??= new DispatcherTimer(TimeSpan.FromSeconds(2), DispatcherPriority.Background, (_, _) =>
         {
+            if (!Permissions.Granted)
+                return;
+            _tap.Dispose();
             if (!_tap.Start())
                 return;
             _retry!.Stop();
-            _menu.PermissionMissing = false;
-            Log("event tap installed after the permission was granted");
-            _help?.SetKeyboardAccess(true);
+            OnTapReady("Accessibility permission granted: event tap installed, the drag gesture works");
         });
         _retry.Start();
+    }
+
+    private void OnTapReady(string message)
+    {
+        _menu.PermissionMissing = false;
+        _help?.SetKeyboardAccess(true);
+        Log(message);
     }
 
     private void OnModifierTapped(ModifierKey key)
@@ -135,7 +146,7 @@ internal sealed class Agent : IDisposable
             _help.Activate();
             return;
         }
-        _help = new HelpWindow(_settings, _tap.IsRunning, Permissions.OpenSettings);
+        _help = new HelpWindow(_settings, Permissions.Granted && _tap.IsRunning, Permissions.OpenSettings);
         _help.Closed += (_, _) => _help = null;
         AppKit.ActivateApp();
         _help.Show();
