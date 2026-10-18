@@ -156,7 +156,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - name: Publish
-        run: dotnet publish src/FileAction.Linux/FileAction.Linux.csproj -c Release -r linux-x64 --self-contained -p:Version=$VERSION -o publish-linux
+        run: dotnet publish src/FileAction.Desktop/FileAction.Desktop.csproj -c Release -r linux-x64 --self-contained -p:Version=$VERSION -o publish-linux
       - name: Self-test and command line
         run: |
           ./publish-linux/fileaction --version
@@ -180,6 +180,46 @@ jobs:
         with:
           name: ui-previews-linux
           path: self-test-linux
+
+  macos:
+    name: macOS build, self-test and app bundle
+    needs: version
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Publish
+        run: dotnet publish src/FileAction.Desktop/FileAction.Desktop.csproj -c Release -r osx-arm64 --self-contained -p:Version=$VERSION -o publish-mac
+      - name: Self-test and command line
+        run: |
+          ./publish-mac/fileaction --version
+          ./publish-mac/fileaction --self-test self-test-mac
+          cat self-test-mac/self-test.txt
+          cp self-test-mac/en/wheel-actions.png /tmp/sample.png
+          ./publish-mac/fileaction list /tmp/sample.png
+          ./publish-mac/fileaction run image.to.jpg /tmp/sample.png
+          test -s /tmp/sample.jpg
+      - name: App bundle
+        run: |
+          packaging/make-mac-app.sh "$VERSION" publish-mac dist arm64
+          ls -la dist
+          ditto -x -k dist/FileAction-$VERSION-macos-arm64.zip unpacked
+          plutil -lint unpacked/FileAction.app/Contents/Info.plist
+          codesign --verify --deep --strict unpacked/FileAction.app
+          unpacked/FileAction.app/Contents/MacOS/fileaction --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FileAction-macos
+          path: dist/*
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-previews-macos
+          path: self-test-mac
 
   arch:
     name: Arch Linux package (makepkg, install, run)
@@ -228,7 +268,7 @@ jobs:
 
   release:
     name: Publish release
-    needs: [version, windows, linux, arch]
+    needs: [version, windows, linux, macos, arch]
     if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-latest
     env:
@@ -242,6 +282,10 @@ jobs:
         with:
           name: FileAction-linux
           path: linux
+      - uses: actions/download-artifact@v4
+        with:
+          name: FileAction-macos
+          path: macos
       - uses: actions/download-artifact@v4
         with:
           name: aur
@@ -270,6 +314,7 @@ jobs:
           files: |
             artifacts/*
             linux/*.tar.gz
+            macos/*.zip
       - name: Publish to the AUR
         env:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}

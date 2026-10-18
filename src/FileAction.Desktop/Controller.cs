@@ -1,29 +1,36 @@
+using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Threading;
 using FileAction.Core;
 using FileAction.Core.Operations;
-using FileAction.Linux.UI;
+using FileAction.Desktop.UI;
 using static FileAction.Core.Loc;
 
-namespace FileAction.Linux;
+namespace FileAction.Desktop;
 
 /// <summary>Builds the wheels, runs operations with progress cards and quits when nothing is left on screen.</summary>
 public sealed class Controller
 {
-    private readonly LinuxSettings _settings;
+    private readonly DesktopSettings _settings;
     private readonly ToolLocator _tools = new();
     private readonly IReadOnlyList<Operation> _conversions;
     private readonly IReadOnlyList<Operation> _actions;
     private readonly IClassicDesktopStyleApplicationLifetime? _lifetime;
+    private readonly bool _agent;
     private JobsWindow? _jobs;
     private int _running;
-    private bool _wheelOpen;
+    private int _wheels;
+    private WheelWindow? _gesture;
+    private DispatcherTimer? _gestureClose;
 
-    public Controller(LinuxSettings settings, IClassicDesktopStyleApplicationLifetime? lifetime)
+    /// <param name="agent">A long-lived menu-bar app: never quit when idle.</param>
+    public Controller(DesktopSettings settings, IClassicDesktopStyleApplicationLifetime? lifetime, bool agent = false)
     {
         _settings = settings;
         _lifetime = lifetime;
-        _conversions = LinuxOperations.Conversions(settings);
-        _actions = LinuxActions.Build(TrackAsync);
+        _agent = agent;
+        _conversions = DesktopOperations.Conversions(settings);
+        _actions = DesktopActions.Build(TrackAsync);
     }
 
     public IReadOnlyList<Operation> Operations(WheelKind wheel, IReadOnlyList<FileItem> items) =>
@@ -36,24 +43,96 @@ public sealed class Controller
         return op is not null && op.AppliesTo(items) && op.IsAvailable(_tools, items) ? op : null;
     }
 
-    public WheelWindow CreateWheel(IReadOnlyList<FileItem> items)
+    /// <summary>A wheel for <paramref name="items"/>, or the drop zone when there are none.</summary>
+    public WheelWindow CreateWheel(IReadOnlyList<FileItem> items) => Track(new WheelWindow(items, Operations, Execute) { LastOperation = LastFor });
+
+    private WheelWindow Track(WheelWindow wheel)
     {
-        var wheel = new WheelWindow(items, Operations, (op, targets, repeat) => _ = ExecuteAsync(op, targets, repeat)) { LastOperation = LastFor };
-        _wheelOpen = true;
+        _wheels++;
         wheel.Closed += (_, _) =>
         {
-            _wheelOpen = false;
+            _wheels--;
             ExitIfIdle();
         };
         return wheel;
     }
+
+    private void Execute(Operation op, IReadOnlyList<FileItem> targets, bool repeat) => _ = ExecuteAsync(op, targets, repeat);
+
+    /// <summary>Opens a wheel under the pointer for files chosen elsewhere (Finder selection, "Open With").</summary>
+    public void OpenFor(IReadOnlyList<FileItem> items)
+    {
+        if (items.Count == 0)
+            return;
+        var wheel = CreateWheel(items);
+        wheel.Show();
+        wheel.Activate();
+    }
+
+    public void OpenDropZone()
+    {
+        var wheel = CreateWheel([]);
+        wheel.Show();
+        wheel.Activate();
+    }
+
+    // ------------------------------------------------------------------ the drag gesture (macOS)
+
+    /// <summary>
+    /// A wheel key was tapped. With a gesture wheel open, the same key toggles "repeat last" and another key
+    /// switches wheels; otherwise a wheel opens under the pointer when something is being dragged.
+    /// </summary>
+    public void OnGesture(WheelKind wheel, bool dragging, (double X, double Y) cursor)
+    {
+        if (_gesture is { IsVisible: true } open)
+        {
+            if (wheel == open.CurrentWheel)
+                open.ToggleRepeat();
+            else
+                open.SwitchTo(wheel);
+            return;
+        }
+        if (!dragging)
+            return;
+        _gestureClose?.Stop();
+        var window = Track(new WheelWindow(null, Operations, Execute, dragMode: true) { LastOperation = LastFor, AnchorPoints = cursor });
+        window.SwitchTo(wheel);
+        window.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_gesture, window))
+                _gesture = null;
+        };
+        _gesture = window;
+        window.Show();
+    }
+
+    /// <summary>The drag ended: a drop on the wheel closes it itself; a drop elsewhere leaves it, so close it shortly after.</summary>
+    public void OnDragEnded()
+    {
+        if (_gesture is null)
+            return;
+        _gestureClose ??= new DispatcherTimer(TimeSpan.FromMilliseconds(500), DispatcherPriority.Normal, (_, _) =>
+        {
+            _gestureClose!.Stop();
+            CloseGestureWheel();
+        });
+        _gestureClose.Start();
+    }
+
+    public void CloseGestureWheel()
+    {
+        _gesture?.Close();
+        _gesture = null;
+    }
+
+    // ------------------------------------------------------------------ running operations
 
     private async Task ExecuteAsync(Operation op, IReadOnlyList<FileItem> items, bool repeat)
     {
         _running++;
         try
         {
-            if (op is LinuxAction action)
+            if (op is DesktopAction action)
             {
                 Remember(op, null);
                 try
@@ -154,10 +233,17 @@ public sealed class Controller
         return window;
     }
 
-    private void ShowError(string title, string message)
+    public void ShowError(string title, string message)
     {
         _jobs ??= CreateJobsWindow();
         _jobs.Add(title, "", () => { }).Fail(message);
+    }
+
+    /// <summary>A card that just says something (it goes away on its own).</summary>
+    public void ShowNote(string title, string message)
+    {
+        _jobs ??= CreateJobsWindow();
+        _jobs.Add(title, "", () => { }).Complete([], null, message);
     }
 
     private void Remember(Operation op, IReadOnlyDictionary<string, string>? parameters)
@@ -167,10 +253,10 @@ public sealed class Controller
         _settings.Save();
     }
 
-    /// <summary>Quit once the wheel is closed, nothing runs and no progress card is left.</summary>
+    /// <summary>Quit once no wheel is open, nothing runs and no progress card is left (never for the menu-bar app).</summary>
     private void ExitIfIdle()
     {
-        if (_wheelOpen || _running > 0 || (_jobs is not null && _jobs.Cards.Children.Count > 0))
+        if (_agent || _wheels > 0 || _running > 0 || (_jobs is not null && _jobs.Cards.Children.Count > 0))
             return;
         _lifetime?.Shutdown();
     }

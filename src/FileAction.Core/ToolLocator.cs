@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using static FileAction.Core.Loc;
 
 namespace FileAction.Core;
@@ -14,7 +13,11 @@ public sealed class ToolLocator
         _appDir = appDir ?? AppContext.BaseDirectory;
     }
 
-    private static bool IsWindows => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+    private static bool IsWindows => OperatingSystem.IsWindows();
+    private static bool IsMacOS => OperatingSystem.IsMacOS();
+
+    /// <summary>Where Homebrew and MacPorts put programs; apps started from Finder don't inherit the shell's PATH.</summary>
+    public static readonly string[] MacToolDirs = ["/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin"];
 
     public string? Ffmpeg => Find(ExternalTool.Ffmpeg);
     public string? Pandoc => Find(ExternalTool.Pandoc);
@@ -39,13 +42,23 @@ public sealed class ToolLocator
         _ => tool.ToString(),
     };
 
-    public static string InstallHint(ExternalTool tool) => tool switch
+    public static string InstallHint(ExternalTool tool)
     {
-        ExternalTool.Ffmpeg => T("Nainstalujte ho příkazem: ", "Install it with: ") + "winget install Gyan.FFmpeg",
-        ExternalTool.Pandoc => T("Nainstalujte ho příkazem: ", "Install it with: ") + "winget install JohnMacFarlane.Pandoc",
-        ExternalTool.LibreOffice => T("Nainstalujte ho příkazem: ", "Install it with: ") + "winget install TheDocumentFoundation.LibreOffice",
-        _ => "",
-    };
+        var command = (tool, IsWindows, IsMacOS) switch
+        {
+            (ExternalTool.Ffmpeg, true, _) => "winget install Gyan.FFmpeg",
+            (ExternalTool.Pandoc, true, _) => "winget install JohnMacFarlane.Pandoc",
+            (ExternalTool.LibreOffice, true, _) => "winget install TheDocumentFoundation.LibreOffice",
+            (ExternalTool.Ffmpeg, _, true) => "brew install ffmpeg",
+            (ExternalTool.Pandoc, _, true) => "brew install pandoc",
+            (ExternalTool.LibreOffice, _, true) => "brew install --cask libreoffice",
+            (ExternalTool.Ffmpeg, _, _) => "sudo pacman -S ffmpeg / sudo apt install ffmpeg",
+            (ExternalTool.Pandoc, _, _) => "sudo pacman -S pandoc-cli / sudo apt install pandoc",
+            (ExternalTool.LibreOffice, _, _) => "sudo pacman -S libreoffice-fresh / sudo apt install libreoffice",
+            _ => "",
+        };
+        return command.Length == 0 ? "" : T("Nainstalujte ho příkazem: ", "Install it with: ") + command;
+    }
 
     public string? Find(ExternalTool tool)
     {
@@ -55,6 +68,40 @@ public sealed class ToolLocator
                 _cache[tool] = path = Locate(tool);
             return path;
         }
+    }
+
+    /// <summary>The full path of program <paramref name="name"/> on PATH (plus the Homebrew folders on macOS), or null.</summary>
+    public static string? Which(string name) => FindIn(SearchDirs(), [name]);
+
+    private static IEnumerable<string> SearchDirs()
+    {
+        var pathVar = Environment.GetEnvironmentVariable("PATH") ?? "";
+        if (IsWindows)
+        {
+            // Pick up tools installed after the app started (winget updates the registry, not our environment).
+            pathVar += Path.PathSeparator + Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User)
+                + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine);
+        }
+        var dirs = pathVar.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries).Select(d => d.Trim('"'));
+        return IsMacOS ? dirs.Concat(MacToolDirs) : dirs;
+    }
+
+    private static string? FindIn(IEnumerable<string> dirs, IReadOnlyList<string> names)
+    {
+        foreach (var dir in dirs)
+        {
+            foreach (var n in names)
+            {
+                try
+                {
+                    var full = Path.Combine(dir, n);
+                    if (File.Exists(full))
+                        return full;
+                }
+                catch (ArgumentException) { }
+            }
+        }
+        return null;
     }
 
     private string? Locate(ExternalTool tool)
@@ -87,6 +134,14 @@ public sealed class ToolLocator
             }
         }
 
+        if (tool == ExternalTool.LibreOffice && IsMacOS)
+        {
+            candidates.Add("/Applications/LibreOffice.app/Contents/MacOS/soffice");
+            var home = Environment.GetEnvironmentVariable("HOME");
+            if (!string.IsNullOrEmpty(home))
+                candidates.Add(Path.Combine(home, "Applications", "LibreOffice.app", "Contents", "MacOS", "soffice"));
+        }
+
         if (tool == ExternalTool.Pandoc && IsWindows)
         {
             var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -106,29 +161,9 @@ public sealed class ToolLocator
                 return c;
         }
 
-        var pathVar = Environment.GetEnvironmentVariable("PATH") ?? "";
-        if (IsWindows)
-        {
-            // Pick up tools installed after the app started (winget updates the registry, not our environment).
-            pathVar += Path.PathSeparator + Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User)
-                + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine);
-        }
         var names = IsWindows
             ? (tool == ExternalTool.LibreOffice ? new[] { "soffice.com", "soffice.exe" } : new[] { exe + ".exe" })
             : new[] { exe, tool == ExternalTool.LibreOffice ? "libreoffice" : exe };
-        foreach (var dir in pathVar.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-        {
-            foreach (var n in names)
-            {
-                try
-                {
-                    var full = Path.Combine(dir.Trim('"'), n);
-                    if (File.Exists(full))
-                        return full;
-                }
-                catch (ArgumentException) { }
-            }
-        }
-        return null;
+        return FindIn(SearchDirs(), names);
     }
 }

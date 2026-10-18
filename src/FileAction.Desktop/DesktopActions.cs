@@ -4,10 +4,10 @@ using Avalonia.Platform.Storage;
 using FileAction.Core;
 using static FileAction.Core.Loc;
 
-namespace FileAction.Linux;
+namespace FileAction.Desktop;
 
 /// <summary>An Actions-wheel entry that runs in the app rather than producing converted files.</summary>
-public sealed class LinuxAction(string id, string label, string glyph, string? subtitle, Func<IReadOnlyList<FileItem>, Task> run, Func<IReadOnlyList<FileItem>, bool>? applies = null)
+public sealed class DesktopAction(string id, string label, string glyph, string? subtitle, Func<IReadOnlyList<FileItem>, Task> run, Func<IReadOnlyList<FileItem>, bool>? applies = null)
     : Operation(id, WheelKind.Actions, label, glyph, subtitle)
 {
     public override bool AppliesTo(IReadOnlyList<FileItem> items) => items.Count > 0 && (applies?.Invoke(items) ?? true);
@@ -19,28 +19,28 @@ public sealed class LinuxAction(string id, string label, string glyph, string? s
 }
 
 /// <summary>Copy, move, copy path, terminal and "show in folder" for the Actions wheel.</summary>
-public static class LinuxActions
+public static class DesktopActions
 {
     public static IReadOnlyList<Operation> Build(Func<string, Func<CancellationToken, Task<IReadOnlyList<string>>>, Task> track) =>
     [
-        new LinuxAction("action.copy", T("Kopírovat", "Copy"), Glyphs.Copy, T("do složky…", "to folder…"),
+        new DesktopAction("action.copy", T("Kopírovat", "Copy"), Glyphs.Copy, T("do složky…", "to folder…"),
             items => CopyOrMoveAsync(items, move: false, track)),
-        new LinuxAction("action.move", T("Přesunout", "Move"), Glyphs.Move, T("do složky…", "to folder…"),
+        new DesktopAction("action.move", T("Přesunout", "Move"), Glyphs.Move, T("do složky…", "to folder…"),
             items => CopyOrMoveAsync(items, move: true, track)),
-        new LinuxAction("action.path", T("Kopírovat cestu", "Copy path"), Glyphs.Link, null,
+        new DesktopAction("action.path", T("Kopírovat cestu", "Copy path"), Glyphs.Link, null,
             items => WithHelperWindowAsync(async window =>
             {
                 if (window.Clipboard is { } clipboard)
                     await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clipboard, string.Join("\n", items.Select(i => i.Path)));
             })),
-        new LinuxAction("action.terminal", T("Terminál", "Terminal"), Glyphs.Terminal, T("otevřít zde", "open here"), items =>
+        new DesktopAction("action.terminal", T("Terminál", "Terminal"), Glyphs.Terminal, T("otevřít zde", "open here"), items =>
         {
             var folder = items[0].IsDirectory ? items[0].Path : Path.GetDirectoryName(items[0].Path)!;
             if (!Desktop.Terminal(folder))
                 throw new ConversionException(T("Nenašel jsem terminál. Nastavte proměnnou TERMINAL.", "No terminal found. Set the TERMINAL variable."));
             return Task.CompletedTask;
         }),
-        new LinuxAction("action.reveal", T("Ve složce", "Show"), Glyphs.Folder, T("ve správci souborů", "in file manager"), items =>
+        new DesktopAction("action.reveal", T("Ve složce", "Show"), Glyphs.Folder, T("ve správci souborů", "in file manager"), items =>
         {
             Desktop.Reveal(items[0].Path);
             return Task.CompletedTask;

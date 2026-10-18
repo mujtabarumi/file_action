@@ -13,7 +13,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileAction.Tests", "tests\FileAction.Tests\FileAction.Tests.csproj", "{5FCC20D1-4185-4D05-9B22-D583B8FAB34D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileAction.Linux", "src\FileAction.Linux\FileAction.Linux.csproj", "{D341D14E-9653-4338-B42C-6D2BE41E7875}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileAction.Desktop", "src\FileAction.Desktop\FileAction.Desktop.csproj", "{D341D14E-9653-4338-B42C-6D2BE41E7875}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

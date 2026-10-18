@@ -11,7 +11,7 @@ using FileAction.Core;
 using static FileAction.Core.Loc;
 using Path = Avalonia.Controls.Shapes.Path;
 
-namespace FileAction.Linux.UI;
+namespace FileAction.Desktop.UI;
 
 /// <summary>
 /// The radial menu. Opened for files (from the file manager or the command line) it works with mouse and
@@ -46,10 +46,14 @@ public sealed class WheelWindow : Window
     private bool _dragging;
 
     /// <param name="execute">Runs an operation; the flag says it is a "repeat last" run.</param>
-    public WheelWindow(IReadOnlyList<FileItem>? items, OperationSource source, Action<Operation, IReadOnlyList<FileItem>, bool> execute)
+    /// <param name="dragMode">
+    /// Opened by the drag gesture while something is being dragged: it learns the files when the drag enters,
+    /// never takes the focus and closes after the drop (unlike the drop zone, which stays).
+    /// </param>
+    public WheelWindow(IReadOnlyList<FileItem>? items, OperationSource source, Action<Operation, IReadOnlyList<FileItem>, bool> execute, bool dragMode = false)
     {
         _items = items ?? [];
-        _dropZone = _items.Count == 0;
+        _dropZone = _items.Count == 0 && !dragMode;
         _source = source;
         _execute = execute;
 
@@ -61,6 +65,7 @@ public sealed class WheelWindow : Window
         TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
         Background = Brushes.Transparent;
         ShowInTaskbar = _dropZone;
+        ShowActivated = !dragMode;
         Topmost = true;
         Content = _canvas;
         Icon = AppIcon.Window;
@@ -89,15 +94,21 @@ public sealed class WheelWindow : Window
 
     public WheelKind CurrentWheel => _wheel;
 
+    /// <summary>Where to centre the wheel, in CoreGraphics points (macOS gesture); null = under the pointer.</summary>
+    public (double X, double Y)? AnchorPoints { get; init; }
+
     private void PlaceAtPointer()
     {
-        if (Shell.X11.Pointer() is not { } p)
+        var pointer = AnchorPoints is { } a && OperatingSystem.IsMacOS()
+            ? Mac.CoreGraphics.ToPixels(new Mac.CoreGraphics.CGPoint { X = a.X, Y = a.Y }, Screens)
+            : Shell.Pointer.Position(this);
+        if (pointer is not { } p)
         {
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             return;
         }
-        var half = (int)(Size * RenderScaling / 2);
-        var screen = Screens.ScreenFromPoint(new PixelPoint(p.X, p.Y))?.WorkingArea;
+        var half = (int)(Size * Shell.Pointer.Scale(this) / 2);
+        var screen = Screens.ScreenFromPoint(p)?.WorkingArea;
         var x = p.X - half;
         var y = p.Y - half;
         if (screen is { } area)
@@ -106,6 +117,11 @@ public sealed class WheelWindow : Window
             y = Math.Clamp(y, area.Y, Math.Max(area.Y, area.Bottom - 2 * half));
         }
         Position = new PixelPoint(x, y);
+        if (Environment.GetEnvironmentVariable("FILEACTION_DEBUG") is { Length: > 0 })
+        {
+            var primary = Screens.Primary?.Bounds;
+            Console.Error.WriteLine($"[wheel] pointer={p} scale={Shell.Pointer.Scale(this)} renderScaling={RenderScaling} primary={primary} work={screen} -> position={Position} size={Size}");
+        }
     }
 
     public void SwitchTo(WheelKind wheel)

@@ -1,7 +1,7 @@
 using FileAction.Core;
 using static FileAction.Core.Loc;
 
-namespace FileAction.Linux;
+namespace FileAction.Desktop;
 
 /// <summary>Command-line use: list and run operations without the wheel (scripts, keyboard shortcuts).</summary>
 public static class Cli
@@ -12,7 +12,7 @@ public static class Cli
 
     public static int Run(string[] args)
     {
-        var settings = LinuxSettings.Load();
+        var settings = DesktopSettings.Load();
         Loc.Current = settings.Language ?? Loc.Detect();
         try
         {
@@ -41,12 +41,16 @@ public static class Cli
     private static string Help => $"""
         fileaction {Version} – {T("převod souborů puštěním na kolo", "convert files by dropping them on a wheel")}
 
-          fileaction                       {T("kolo, na které můžete přetahovat soubory", "a wheel you can drop files on")}
-          fileaction FILE...               {T("kolo pro tyto soubory", "the wheel for these files")}
+          fileaction                       {(OperatingSystem.IsMacOS()
+                                                ? T("aplikace v řádku nabídek: gesto „táhni a ťukni“ (též --agent)", "the menu-bar app with the drag-and-tap gesture (also --agent)")
+                                                : T("kolo, na které můžete přetahovat soubory", "a wheel you can drop files on"))}
+          {(OperatingSystem.IsMacOS() ? "fileaction --drop-zone           " + T("kolo, na které můžete přetahovat soubory", "a wheel you can drop files on") + "\n  " : "")}fileaction FILE...               {T("kolo pro tyto soubory", "the wheel for these files")}
           fileaction list FILE...          {T("co se s nimi dá udělat", "what can be done with them")}
           fileaction run ID FILE... [--param KEY=VALUE]... [--out DIR]
                                            {T("spustí převod nebo nástroj (ID z list)", "runs a conversion or tool (ID from list)")}
-          fileaction integrate [--remove]  {T("položka FileAction v Nautilu, Dolphinu a Nemu", "FileAction item in Nautilus, Dolphin and Nemo")}
+          fileaction integrate [--remove]  {(OperatingSystem.IsMacOS()
+                                                ? T("Rychlá akce ve Finderu a spouštění po přihlášení", "Quick Action in Finder and start at login")
+                                                : T("položka FileAction v Nautilu, Dolphinu a Nemu", "FileAction item in Nautilus, Dolphin and Nemo"))}
           fileaction --version
         """;
 
@@ -65,13 +69,13 @@ public static class Cli
         return items;
     }
 
-    private static int List(string[] args, LinuxSettings settings)
+    private static int List(string[] args, DesktopSettings settings)
     {
         var items = Items(args);
         var tools = new ToolLocator();
         foreach (var wheel in new[] { WheelKind.Convert, WheelKind.Tools })
         {
-            var ops = Core.Operations.Catalog.For(LinuxOperations.Conversions(settings), wheel, items, tools);
+            var ops = Core.Operations.Catalog.For(DesktopOperations.Conversions(settings), wheel, items, tools);
             if (ops.Count == 0)
                 continue;
             Console.WriteLine(wheel == WheelKind.Convert ? T("Převést:", "Convert:") : T("Nástroje:", "Tools:"));
@@ -81,7 +85,7 @@ public static class Cli
         return 0;
     }
 
-    private static int RunOperation(string[] args, LinuxSettings settings)
+    private static int RunOperation(string[] args, DesktopSettings settings)
     {
         if (args.Length < 2)
             throw new ConversionException(Help);
@@ -106,7 +110,7 @@ public static class Cli
         }
         var items = Items(paths);
         var tools = new ToolLocator();
-        var op = LinuxOperations.Conversions(settings).FirstOrDefault(o => o.Id == args[0])
+        var op = DesktopOperations.Conversions(settings).FirstOrDefault(o => o.Id == args[0])
             ?? throw new ConversionException(T($"Neznámé ID: {args[0]} (viz fileaction list)", $"Unknown ID: {args[0]} (see fileaction list)"));
         if (!op.AppliesTo(items))
             throw new ConversionException(T($"{op.Id} se na tyto soubory nehodí.", $"{op.Id} doesn't apply to these files."));

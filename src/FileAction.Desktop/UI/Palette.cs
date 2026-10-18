@@ -3,7 +3,7 @@ using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Avalonia.Platform;
 
-namespace FileAction.Linux.UI;
+namespace FileAction.Desktop.UI;
 
 /// <summary>The same palette as the Windows app, for light and dark desktops.</summary>
 public static class Palette

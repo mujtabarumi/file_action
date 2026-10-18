@@ -9,3 +9,5 @@ TestResults/
 .vs/
 .vscode/
 .idea/
+dist/
+.DS_Store

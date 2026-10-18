@@ -5,9 +5,9 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using FileAction.Core;
 using FileAction.Core.Operations;
-using FileAction.Linux.UI;
+using FileAction.Desktop.UI;
 
-namespace FileAction.Linux;
+namespace FileAction.Desktop;
 
 /// <summary><c>fileaction --self-test DIR</c>: renders the windows headlessly to PNG (no display needed; used by CI).</summary>
 public static class SelfTest
@@ -43,7 +43,7 @@ public static class SelfTest
     {
         Directory.CreateDirectory(dir);
         string N(string cs, string en) => english ? en : cs;
-        var settings = new LinuxSettings();
+        var settings = new DesktopSettings();
         var controller = new Controller(settings, null);
         var photo = new List<FileItem> { new(N("/home/jana/Obrázky/dovolená.jpg", "/home/jane/Pictures/vacation.jpg")) };
         var video = new List<FileItem> { new(N("/home/jana/Videa/klip.mov", "/home/jane/Videos/clip.mov")) };
@@ -60,8 +60,10 @@ public static class SelfTest
             .Complete([N("/home/jana/Obrázky/dovolená (komprimováno).jpg", "/home/jane/Pictures/vacation (compressed).jpg")], null);
         Save(jobs, dir, "jobs", log);
 
-        var trim = LinuxOperations.Conversions(settings).Single(o => o.Id == "video.trim");
+        var trim = DesktopOperations.Conversions(settings).Single(o => o.Id == "video.trim");
         Save(new ParameterWindow(trim, video), dir, "trim-dialog", log);
+        Save(new HelpWindow(settings, keyboardAccess: false, openSettings: () => { }), dir, "help", log);
+        Save(new HelpWindow(settings, keyboardAccess: true), dir, "help-allowed", log);
     }
 
     private static WheelWindow Wheel(Controller controller, List<FileItem> items, WheelKind kind, int highlight)

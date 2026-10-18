@@ -5,7 +5,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using static FileAction.Core.Loc;
 
-namespace FileAction.Linux.UI;
+namespace FileAction.Desktop.UI;
 
 /// <summary>Progress cards in the bottom-right corner.</summary>
 public sealed class JobsWindow : Window
