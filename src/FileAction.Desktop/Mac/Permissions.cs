@@ -31,7 +31,13 @@ internal static partial class Permissions
     [LibraryImport(CoreFoundation.Lib)]
     private static partial IntPtr CFDictionaryCreate(IntPtr allocator, IntPtr[] keys, IntPtr[] values, long count, IntPtr keyCallBacks, IntPtr valueCallBacks);
 
-    public static bool Granted => AXIsProcessTrusted() || CGPreflightListenEventAccess();
+    /// <summary>Accessibility: lets the app install an active event tap (what the drag gesture uses).</summary>
+    public static bool Accessibility => AXIsProcessTrusted();
+
+    /// <summary>Input Monitoring: enough for a listen-only tap.</summary>
+    public static bool InputMonitoring => CGPreflightListenEventAccess();
+
+    public static bool Granted => Accessibility || InputMonitoring;
 
     /// <summary>Shows the system's Accessibility prompt (macOS shows it once per app); true when already trusted.</summary>
     public static bool Request()

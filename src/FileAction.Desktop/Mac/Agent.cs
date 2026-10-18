@@ -78,9 +78,9 @@ internal sealed class Agent : IDisposable
     /// </summary>
     private void StartTap()
     {
-        if (Permissions.Granted && _tap.Start())
+        if (Permissions.Granted && _tap.Start(active: Permissions.Accessibility))
         {
-            OnTapReady("event tap installed: the drag gesture works");
+            OnTapReady($"event tap installed ({Mode}): the drag gesture works");
             return;
         }
         _menu.PermissionMissing = true;
@@ -91,19 +91,33 @@ internal sealed class Agent : IDisposable
             if (!Permissions.Granted)
                 return;
             _tap.Dispose();
-            if (!_tap.Start())
+            if (!_tap.Start(active: Permissions.Accessibility))
                 return;
             _retry!.Stop();
-            OnTapReady("Accessibility permission granted: event tap installed, the drag gesture works");
+            OnTapReady($"permission granted: event tap installed ({Mode}), the drag gesture works");
         });
         _retry.Start();
     }
+
+    private static string Mode => Permissions.Accessibility ? "Accessibility" : "Input Monitoring";
 
     private void OnTapReady(string message)
     {
         _menu.PermissionMissing = false;
         _help?.SetKeyboardAccess(true);
         Log(message);
+        // A tap macOS doesn't feed stays silent; say so instead of claiming the gesture works.
+        DispatcherTimer.RunOnce(() =>
+        {
+            var seen = _tap.EventCount;
+            Log(seen > 0 ? $"event tap is receiving input ({seen} events in the first minute)"
+                : "event tap received no input in a minute: macOS isn't delivering events; re-check Accessibility for FileAction");
+            if (seen == 0)
+            {
+                _menu.PermissionMissing = true;
+                _help?.SetKeyboardAccess(false);
+            }
+        }, TimeSpan.FromMinutes(1));
     }
 
     private void OnModifierTapped(ModifierKey key)

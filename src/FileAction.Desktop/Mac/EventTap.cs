@@ -5,7 +5,7 @@ using Avalonia.Threading;
 namespace FileAction.Desktop.Mac;
 
 /// <summary>
-/// A session-wide, listen-only CoreGraphics event tap on its own thread. Detects "a modifier key was tapped
+/// A session-wide CoreGraphics event tap on its own thread that passes every event on unchanged. Detects "a modifier key was tapped
 /// while the left button is dragging something" – the gesture that opens a wheel – plus the hotkey and Escape,
 /// and forwards them to the UI thread. Creating the tap fails until the user grants the Accessibility permission.
 /// </summary>
@@ -24,7 +24,8 @@ internal sealed partial class EventTap : IDisposable
     // CGEventTapLocation / CGEventTapPlacement / CGEventTapOptions
     private const uint SessionEventTap = 1;
     private const uint HeadInsertEventTap = 0;
-    private const uint ListenOnly = 1;
+    private const uint DefaultTap = 0; // may modify events; covered by the Accessibility permission
+    private const uint ListenOnly = 1; // read-only; needs the separate Input Monitoring permission
 
     // CGEventField
     private const uint KeyboardEventKeycode = 9;
@@ -81,7 +82,16 @@ internal sealed partial class EventTap : IDisposable
     public CoreGraphics.CGPoint Cursor => new() { X = Volatile.Read(ref _cursorX), Y = Volatile.Read(ref _cursorY) };
 
     /// <summary>Installs the tap; false when macOS refuses (the permission isn't granted yet).</summary>
-    public bool Start()
+    /// <summary>Events the tap has seen since it started (0 after a while means macOS isn't delivering any).</summary>
+    public long EventCount => Interlocked.Read(ref _events);
+
+    private long _events;
+
+    /// <param name="active">
+    /// An active tap (Accessibility permission) rather than listen-only (Input Monitoring). Both see the same
+    /// events and this one passes every event on unchanged; macOS only differs in which permission it checks.
+    /// </param>
+    public bool Start(bool active = true)
     {
         if (_thread is not null)
             return true;
@@ -91,7 +101,7 @@ internal sealed partial class EventTap : IDisposable
         {
             var mask = (1UL << (int)LeftMouseDown) | (1UL << (int)LeftMouseUp) | (1UL << (int)LeftMouseDragged)
                 | (1UL << (int)KeyDown) | (1UL << (int)FlagsChanged);
-            _tap = CGEventTapCreate(SessionEventTap, HeadInsertEventTap, ListenOnly, mask, _callback, IntPtr.Zero);
+            _tap = CGEventTapCreate(SessionEventTap, HeadInsertEventTap, active ? DefaultTap : ListenOnly, mask, _callback, IntPtr.Zero);
             if (_tap == IntPtr.Zero)
             {
                 ready.Set();
@@ -134,6 +144,7 @@ internal sealed partial class EventTap : IDisposable
 
     private IntPtr OnEvent(IntPtr proxy, uint type, IntPtr e, IntPtr userInfo)
     {
+        Interlocked.Increment(ref _events);
         try
         {
             if (Trace && type is KeyDown or FlagsChanged or LeftMouseDown or LeftMouseUp or LeftMouseDragged)
