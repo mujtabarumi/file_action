@@ -15,6 +15,9 @@ public sealed class App : Application
     /// <summary>Run as the menu-bar app with the drag gesture (macOS) instead of opening one wheel and quitting.</summary>
     public static bool AgentMode { get; set; }
 
+    /// <summary>Show the "how it works" window when the menu-bar app starts (it was launched by hand).</summary>
+    public static bool ShowOnStart { get; set; }
+
     private IDisposable? _agent;
 
     public override void Initialize() => Styles.Add(new FluentTheme());
@@ -28,7 +31,7 @@ public sealed class App : Application
             var controller = new Controller(settings, desktop, AgentMode);
             if (AgentMode && OperatingSystem.IsMacOS())
             {
-                _agent = new Mac.Agent(settings, controller, () =>
+                _agent = new Mac.Agent(settings, controller, ShowOnStart, () =>
                 {
                     _agent?.Dispose();
                     desktop.Shutdown();
@@ -48,6 +51,8 @@ public sealed class App : Application
                 {
                     if (e is FileActivatedEventArgs files)
                         controller.OpenFor(files.Files.Select(f => f.TryGetLocalPath()).OfType<string>().Select(p => new FileItem(p)).ToList());
+                    else if (e.Kind == ActivationKind.Reopen && _agent is Mac.Agent agent)
+                        agent.ShowHelp(); // the app was double-clicked again while it runs
                 };
             }
         }
@@ -87,6 +92,15 @@ public static class Program
             .ToList();
         // On macOS the app lives in the menu bar; "fileaction" alone starts it (or brings up the drop zone with --drop-zone).
         App.AgentMode = OperatingSystem.IsMacOS() && (args.Contains("--agent") || (App.StartupItems.Count == 0 && !args.Contains("--drop-zone")));
+        // Started by the login item (--agent) it stays quiet; started by hand it shows a window, so you see it runs.
+        App.ShowOnStart = !args.Contains("--agent");
+        if (App.AgentMode && OperatingSystem.IsMacOS() && !Mac.SingleInstance.TryAcquire())
+        {
+            // Already running: bring that one forward (unless this is just the login item starting it again).
+            if (App.ShowOnStart)
+                Mac.SingleInstance.ShowRunning();
+            return 0;
+        }
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
     }
 }

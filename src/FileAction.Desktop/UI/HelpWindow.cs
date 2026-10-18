@@ -8,7 +8,12 @@ namespace FileAction.Desktop.UI;
 /// <summary>"How it works" for the menu-bar app.</summary>
 public sealed class HelpWindow : Window
 {
-    public HelpWindow(DesktopSettings settings)
+    private readonly TextBlock _access = new() { TextWrapping = TextWrapping.Wrap, FontSize = 13, FontWeight = FontWeight.SemiBold };
+    private readonly Control? _openSettings;
+
+    /// <param name="keyboardAccess">Whether the drag gesture can see the keyboard (null: don't show the line, e.g. in the self-test).</param>
+    /// <param name="openSettings">Opens System Settings at the Accessibility list.</param>
+    public HelpWindow(DesktopSettings settings, bool? keyboardAccess = null, Action? openSettings = null)
     {
         Palette.Refresh();
         Title = T("FileAction – jak to funguje", "FileAction – how it works");
@@ -18,9 +23,30 @@ public sealed class HelpWindow : Window
         Background = Palette.Page;
         Foreground = Palette.Text;
         Icon = AppIcon.Window;
+        // macOS may refuse to bring a menu-bar app forward, so float above other apps until it is clicked once.
+        Topmost = true;
+        Deactivated += (_, _) => Topmost = false;
 
         var stack = new StackPanel { Margin = new Thickness(28, 22, 28, 24), MaxWidth = 460, Spacing = 10 };
         stack.Children.Add(new TextBlock { Text = T("Převod souborů bez klikání", "Click-free file conversion"), FontSize = 18, FontWeight = FontWeight.SemiBold });
+        stack.Children.Add(new TextBlock
+        {
+            Text = T("FileAction běží v řádku nabídek (ikona vpravo nahoře). Toto okno můžete zavřít.",
+                "FileAction runs in the menu bar (the icon at the top right). You can close this window."),
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 13,
+            Foreground = Palette.Muted,
+        });
+        if (keyboardAccess is not null)
+        {
+            stack.Children.Add(_access);
+            if (openSettings is not null)
+            {
+                _openSettings = Widgets.Button(T("Otevřít Nastavení → Zpřístupnění", "Open Settings → Accessibility"), openSettings, primary: true);
+                stack.Children.Add(_openSettings);
+            }
+            SetKeyboardAccess(keyboardAccess.Value);
+        }
         foreach (var line in new[]
                  {
                      T("1. Chyťte soubor ve Finderu (nebo na ploše) a začněte ho táhnout.", "1. Grab a file in Finder (or on the desktop) and start dragging it."),
@@ -49,7 +75,19 @@ public sealed class HelpWindow : Window
             Margin = new Thickness(0, 6, 0, 0),
         };
         stack.Children.Add(hint);
-        stack.Children.Add(Widgets.Button(T("Zavřít", "Close"), Close, primary: true));
+        stack.Children.Add(Widgets.Button(T("Zavřít", "Close"), Close, primary: keyboardAccess is not false));
         Content = stack;
+    }
+
+    /// <summary>Shows whether the drag gesture works yet (it needs the Accessibility permission).</summary>
+    public void SetKeyboardAccess(bool allowed)
+    {
+        _access.Text = allowed
+            ? T("✓ Gesto tažení je zapnuté.", "✓ The drag gesture is on.")
+            : T("Gesto tažení zatím nefunguje: povolte FileAction v Nastavení systému → Soukromí a zabezpečení → Zpřístupnění. Je-li tam už zapnutá, vypněte ji a znovu zapněte (každé nové sestavení aplikace macOS bere jako novou aplikaci).",
+                "The drag gesture is off until you allow FileAction in System Settings → Privacy & Security → Accessibility. If it is already on there, switch it off and on again (macOS treats every new build of the app as a new app).");
+        _access.Foreground = allowed ? Palette.Success : Palette.Error;
+        if (_openSettings is not null)
+            _openSettings.IsVisible = !allowed;
     }
 }

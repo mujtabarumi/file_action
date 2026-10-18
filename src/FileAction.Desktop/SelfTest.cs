@@ -62,7 +62,8 @@ public static class SelfTest
 
         var trim = DesktopOperations.Conversions(settings).Single(o => o.Id == "video.trim");
         Save(new ParameterWindow(trim, video), dir, "trim-dialog", log);
-        Save(new HelpWindow(settings), dir, "help", log);
+        Save(new HelpWindow(settings, keyboardAccess: false, openSettings: () => { }), dir, "help", log);
+        Save(new HelpWindow(settings, keyboardAccess: true), dir, "help-allowed", log);
     }
 
     private static WheelWindow Wheel(Controller controller, List<FileItem> items, WheelKind kind, int highlight)

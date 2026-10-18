@@ -10,3 +10,4 @@ TestResults/
 .vscode/
 .idea/
 dist/
+.DS_Store

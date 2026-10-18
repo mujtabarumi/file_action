@@ -19,8 +19,10 @@ internal sealed class Agent : IDisposable
     private readonly MenuBar _menu;
     private DispatcherTimer? _retry;
     private HelpWindow? _help;
+    private readonly System.Runtime.InteropServices.PosixSignalRegistration _showSignal;
 
-    public Agent(DesktopSettings settings, Controller controller, Action quit)
+    /// <param name="show">Show the help window right away (the app was started by hand, not by the login item).</param>
+    public Agent(DesktopSettings settings, Controller controller, bool show, Action quit)
     {
         _settings = settings;
         _controller = controller;
@@ -47,16 +49,26 @@ internal sealed class Agent : IDisposable
                 _ = OpenFinderSelectionAsync();
         };
 
+        // A second launch (double-click while running) asks this one to show itself.
+        _showSignal = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+            (System.Runtime.InteropServices.PosixSignal)SingleInstance.ShowSignal, context =>
+            {
+                context.Cancel = true;
+                Dispatcher.UIThread.Post(ShowHelp);
+            });
+
+        Log($"started (pid {Environment.ProcessId}, {(show ? "by hand" : "login item")})");
         if (!_settings.FirstRunDone)
         {
             _settings.FirstRunDone = true;
             _settings.Save();
-            foreach (var _ in Shell.Integration.Apply(true))
-            {
-            }
-            ShowHelp();
+            foreach (var line in Shell.Integration.Apply(true))
+                Log(line);
+            show = true;
         }
         StartTap();
+        if (show)
+            ShowHelp();
     }
 
     /// <summary>Installs the event tap, asking for the Accessibility permission and retrying until it is granted.</summary>
@@ -65,11 +77,11 @@ internal sealed class Agent : IDisposable
         if (_tap.Start())
         {
             _menu.PermissionMissing = false;
-            Debug("event tap installed");
+            Log("event tap installed: the drag gesture works");
             return;
         }
         _menu.PermissionMissing = true;
-        Debug("event tap refused: asking for the Accessibility permission");
+        Log("event tap refused: waiting for the Accessibility permission");
         Permissions.Request();
         _retry ??= new DispatcherTimer(TimeSpan.FromSeconds(3), DispatcherPriority.Background, (_, _) =>
         {
@@ -77,6 +89,8 @@ internal sealed class Agent : IDisposable
                 return;
             _retry!.Stop();
             _menu.PermissionMissing = false;
+            Log("event tap installed after the permission was granted");
+            _help?.SetKeyboardAccess(true);
         });
         _retry.Start();
     }
@@ -113,27 +127,44 @@ internal sealed class Agent : IDisposable
         _controller.ShowNote(T("Přidáno do Finderu", "Added to Finder"), string.Join(Environment.NewLine, lines));
     }
 
-    private void ShowHelp()
+    public void ShowHelp()
     {
         if (_help is { IsVisible: true })
         {
+            AppKit.ActivateApp();
             _help.Activate();
             return;
         }
-        _help = new HelpWindow(_settings);
+        _help = new HelpWindow(_settings, _tap.IsRunning, Permissions.OpenSettings);
         _help.Closed += (_, _) => _help = null;
+        AppKit.ActivateApp();
         _help.Show();
         _help.Activate();
     }
 
-    private static void Debug(string message)
+    /// <summary>~/Library/Logs/FileAction.log: what the menu-bar app did, for when it seems to do nothing.</summary>
+    public static string LogPath => Path.Combine(DesktopSettings.Home, "Library", "Logs", "FileAction.log");
+
+    private static void Log(string message)
     {
+        var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}";
         if (Environment.GetEnvironmentVariable("FILEACTION_DEBUG") is { Length: > 0 })
-            Console.Error.WriteLine("[agent] " + message);
+            Console.Error.WriteLine("[agent] " + line);
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+            if (File.Exists(LogPath) && new FileInfo(LogPath).Length > 256 * 1024)
+                File.Delete(LogPath);
+            File.AppendAllText(LogPath, line + Environment.NewLine);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     public void Dispose()
     {
+        _showSignal.Dispose();
         _retry?.Stop();
         _tap.Dispose();
         _menu.Dispose();
