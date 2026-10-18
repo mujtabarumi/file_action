@@ -1,20 +1,22 @@
 using static FileAction.Core.Loc;
 
-namespace FileAction.Linux.Shell;
+namespace FileAction.Desktop.Shell;
 
 /// <summary>
-/// "FileAction…" in the right-click menu of Nautilus (Files), Dolphin and Nemo, for the current user.
-/// The Arch package installs the Dolphin and Nemo entries system-wide; Nautilus only reads per-user scripts.
+/// "FileAction…" in the right-click menu of the file manager, for the current user: Nautilus (Files), Dolphin and
+/// Nemo on Linux (the Arch package installs the Dolphin and Nemo entries system-wide; Nautilus only reads per-user
+/// scripts), a Finder Quick Action plus a login item on macOS.
 /// </summary>
 public static class Integration
 {
     private static string DataHome => Environment.GetEnvironmentVariable("XDG_DATA_HOME") is { Length: > 0 } xdg
         ? xdg
-        : Path.Combine(LinuxSettings.Home, ".local", "share");
+        : Path.Combine(DesktopSettings.Home, ".local", "share");
 
     /// <summary>"fileaction" when it is on PATH (package install), otherwise the full path of this binary.</summary>
     private static string Command =>
-        TesseractOcr.FindInPath("fileaction") is not null ? "fileaction" : Environment.ProcessPath ?? "fileaction";
+        OperatingSystem.IsMacOS() ? Environment.ProcessPath ?? "fileaction"
+        : FileAction.Core.ToolLocator.Which("fileaction") is not null ? "fileaction" : Environment.ProcessPath ?? "fileaction";
 
     public static string NautilusScript(string command) => $"""
         #!/bin/sh
@@ -86,6 +88,12 @@ public static class Integration
     public static IEnumerable<string> Apply(bool install)
     {
         var command = Command;
+        if (OperatingSystem.IsMacOS())
+        {
+            foreach (var line in Mac.FinderIntegration.Apply(install, command))
+                yield return line;
+            yield break;
+        }
         var targets = new (string Path, string Content, bool Executable, string Name)[]
         {
             (Path.Combine(DataHome, "nautilus", "scripts", "FileAction"), NautilusScript(command), true, "Nautilus (Files)"),

@@ -4,7 +4,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 
-namespace FileAction.Linux.UI;
+namespace FileAction.Desktop.UI;
 
 /// <summary>Small drawn controls matching the Windows app (pill buttons).</summary>
 internal static class Widgets

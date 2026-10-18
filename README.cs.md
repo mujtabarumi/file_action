@@ -2,9 +2,9 @@
 
 🇬🇧 [English](README.md) · 🇨🇿 **Čeština**
 
-**Převod souborů bez klikání pro Windows (a Linux).** Chyťte soubor myší, během tažení ťukněte na klávesu a pusťte ho na formát v kruhovém menu. Vše běží lokálně, žádné soubory se nikam neodesílají.
+**Převod souborů bez klikání pro Windows, macOS a Linux.** Chyťte soubor myší, během tažení ťukněte na klávesu a pusťte ho na formát v kruhovém menu. Vše běží lokálně, žádné soubory se nikam neodesílají.
 
-Inspirováno skvělou aplikací [Tangerine](https://tangerineformac.com/) pro macOS. FileAction s ní není nijak spojený, jde o nezávislou obdobu pro Windows.
+Inspirováno skvělou aplikací [Tangerine](https://tangerineformac.com/) pro macOS. FileAction s ní není nijak spojený, jde o nezávislou obdobu (vznikla pro Windows, dnes běží i na macOS a Linuxu).
 
 <p align="center">
   <img src="docs/screenshots/cs/wheel-video-convert.png" width="32%" alt="Kolo Převést pro video" />
@@ -88,6 +88,26 @@ Při prvním spuštění se FileAction zapíše do automatického spouštění a
 
 Požadavky: Windows 10 (1809+) nebo Windows 11, x64.
 
+## macOS
+
+Stáhněte `FileAction-x.y.z-macos-arm64.zip` z [Releases](../../releases) (Apple Silicon; na Intel Macu sestavte ze zdrojů s `-r osx-x64`), rozbalte a přesuňte `FileAction.app` do Aplikací. Aplikace zatím není notarizovaná, poprvé ji otevřete pravým tlačítkem → Otevřít (nebo `xattr -dr com.apple.quarantine /Applications/FileAction.app`).
+
+FileAction sídlí v řádku nabídek a gesto je stejné jako na Windows: macOS dovolí aplikaci sledovat klávesnici a myš ostatních programů, když to povolíte v **Nastavení systému → Soukromí a zabezpečení → Zpřístupnění** (aplikace se zeptá při prvním spuštění).
+
+| Klávesa | Kolo |
+|---|---|
+| **⇧ Shift** | Převést |
+| **⌃ Control** | Nástroje |
+| **⌥ Option** | Akce |
+
+- **Klávesnice:** vyberte soubory ve Finderu a stiskněte **⌃ Control + ⌥ Option + mezerník** (Finder se jednou zeptá, zda smí FileAction číst výběr).
+- **Pravé tlačítko ve Finderu:** **Rychlé akce → FileAction…** – přidá položka nabídky *Přidat do Finderu a spouštět po přihlášení* (nebo `fileaction integrate`), která zároveň zapne spouštění po přihlášení; `fileaction integrate --remove` obojí odebere.
+- **Otevřít v aplikaci:** libovolný soubor nebo složku lze otevřít ve FileAction, která pro ně ukáže kolo.
+- **Odkládací kolo:** *Otevřít odkládací kolo* v nabídce nebo `fileaction --drop-zone`.
+- **Příkazová řádka:** stejná jako na Linuxu, z `/Applications/FileAction.app/Contents/MacOS/fileaction` (udělejte si symlink do `/usr/local/bin/fileaction`).
+
+Pomocné programy jsou z Homebrew: `brew install ffmpeg pandoc tesseract` a `brew install --cask libreoffice`; aplikace je najde v `/opt/homebrew/bin` i při spuštění z Finderu. Nastavení (klávesy, výstupní složka, jazyky OCR) je v `~/Library/Application Support/FileAction/settings.json`; otevře ho položka *Nastavení…* v nabídce. Světlý/tmavý režim a jazyk se řídí systémem.
+
 ## Linux
 
 ```sh
@@ -96,7 +116,7 @@ yay -S fileaction-bin        # Arch Linux (AUR)
 
 Ostatní distribuce: stáhněte `FileAction-x.y.z-linux-x64.tar.gz` z [Releases](../../releases), rozbalte a spusťte `fileaction/app/fileaction` (.NET není potřeba).
 
-Linux aplikacím nedovolí sledovat klávesnici a myš jiných programů (Wayland to záměrně zakazuje), takže gesto „táhnu a ťuknu na klávesu“ je jen pro Windows. Na Linuxu se stejné kolo používá takto:
+Linux aplikacím nedovolí sledovat klávesnici a myš jiných programů (Wayland to záměrně zakazuje), takže gesto „táhnu a ťuknu na klávesu“ je pro Windows a macOS. Na Linuxu se stejné kolo používá takto:
 
 - **Kolo pro přetahování:** spusťte `fileaction` (nebo *FileAction* z nabídky aplikací) a přetáhněte na kolo soubory. Zůstane na obrazovce, posunout ho jde za střed.
 - **Pravé tlačítko ve správci souborů:** `fileaction integrate` přidá *FileAction…* do Nautilu (podnabídka *Skripty*), Dolphinu a Nema (balíček z AUR instaluje Dolphin a Nemo pro všechny).
@@ -124,11 +144,19 @@ publish\FileAction.exe
 
 `FileAction.exe --self-test <složka>` sestaví všechna okna mimo obrazovku a uloží jejich náhledy do PNG v obou jazycích (používá CI).
 
+```sh
+# macOS a Linux (tatáž aplikace v Avalonii)
+dotnet publish src/FileAction.Desktop -c Release -r osx-arm64 --self-contained -o publish-mac   # nebo linux-x64
+packaging/make-mac-app.sh 1.3.0 publish-mac dist        # FileAction.app v zipu
+packaging/make-linux-package.sh 1.3.0 publish-linux dist
+publish-mac/fileaction --self-test nahledy               # tytéž náhledy oken
+```
+
 ### Vydání nové verze
 
 Pošlete do `main` commit, jehož zpráva začíná `Release v1.2.3` (nebo pushněte tag `v1.2.3`, případně ručně spusťte workflow **Build** s číslem verze). CI sestaví instalátor a zip a zveřejní je jako vydání na GitHubu. Když do repozitáře přidáte secret `RELEASE_TOKEN` (osobní přístupový token s oprávněním *Contents: read and write* k tomuto repozitáři), vydání se zveřejní pod vaším účtem místo github-actions.
 
-Stejný běh sestaví i balíček pro Linux, na Arch Linuxu ho zkušebně nainstaluje a když secret `AUR_SSH_PRIVATE_KEY` obsahuje klíč účtu AUR, který spravuje `fileaction-bin`, nahraje nový PKGBUILD do AUR.
+Stejný běh sestaví i aplikaci pro macOS a balíček pro Linux, na Arch Linuxu ho zkušebně nainstaluje a když secret `AUR_SSH_PRIVATE_KEY` obsahuje klíč účtu AUR, který spravuje `fileaction-bin`, nahraje nový PKGBUILD do AUR.
 
 ## Struktura
 
@@ -136,7 +164,8 @@ Stejný běh sestaví i balíček pro Linux, na Arch Linuxu ho zkušebně nainst
 src/FileAction.Core     převody a nástroje (multiplatformní knihovna, testovaná i na Linuxu)
   Backends/             ImageMagick, FFmpeg, Pandoc, LibreOffice, PDF, tabulky, titulky, archivy
   Operations/Catalog.cs seznam všech výsečí na kolech „Převést“ a „Nástroje“
-src/FileAction.Linux    aplikace pro Linux (Avalonia): kolo pro přetahování, příkazová řádka, napojení na správce souborů
+src/FileAction.Desktop  aplikace pro macOS a Linux (Avalonia): kolo, odkládací kolo, příkazová řádka, napojení na správce souborů
+  Mac/                  řádek nabídek, gesto tažení (CoreGraphics event tap), výběr ve Finderu a Rychlá akce
 src/FileAction.App      aplikace pro Windows (WPF)
   Input/GlobalInput.cs  globální sledování myši a kláves (gesto „táhnu + ťuknu“)
   Wheel/                kruhové menu a logika, kdy se otevře
@@ -145,12 +174,12 @@ src/FileAction.App      aplikace pro Windows (WPF)
   Shell/                ikona v oznamovací oblasti, zkratka, kontextová nabídka, jediná instance
 tests/FileAction.Tests  jednotkové testy a integrační testy, které spustí každý převod na vzorových souborech
 installer/              Inno Setup
-packaging/              balíček pro Linux a šablona PKGBUILD pro AUR
+packaging/              aplikace pro macOS, balíček pro Linux a šablona PKGBUILD pro AUR
 ```
 
 ## Rozdíly oproti Tangerine
 
-- Klávesy Shift / Ctrl / Alt místo Shift / Command / Control.
+- Klávesy Shift / Ctrl / Alt na Windows a Shift / Control / Option na macOS místo Shift / Command / Control (v `settings.json` jde přiřadit kterýkoli ze čtyř modifikátorů).
 - Formáty Apple (Pages, Keynote, RTFD) a zápis do HEIC nejsou podporované. HEIC jde jen otevřít.
 - PDF → DOCX/EPUB/HTML převádí text, ne přesné rozvržení stránky (to nabízí PDF → PPTX nebo obrázky).
 - Akce „AirDrop“ odpovídá ve Windows nabídce **Sdílet** (Sdílení nablízko, Teams, Mail…).

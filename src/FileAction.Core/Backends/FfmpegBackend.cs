@@ -40,6 +40,81 @@ public static partial class FfmpegBackend
         };
     }
 
+    /// <summary>
+    /// What to use instead of an encoder library a particular ffmpeg build lacks (Homebrew's may come without
+    /// libvorbis), in order of preference. Opus in an Ogg file plays everywhere Vorbis does; ffmpeg's own vorbis
+    /// encoder is experimental and only encodes stereo.
+    /// </summary>
+    private static readonly Dictionary<string, EncoderFallback[]> EncoderFallbacks = new()
+    {
+        ["libvorbis"] = [new(["libopus", "-b:a", "160k"], KeepsQuality: false), new(["vorbis", "-strict", "experimental", "-ac", "2"], KeepsQuality: true)],
+        ["libopus"] = [new(["opus", "-strict", "experimental"], KeepsQuality: true)],
+    };
+
+    /// <param name="Args">What replaces the encoder name.</param>
+    /// <param name="KeepsQuality">Whether the <c>-q:a</c> / <c>-b:a</c> that follows the encoder still applies.</param>
+    private sealed record EncoderFallback(string[] Args, bool KeepsQuality);
+
+    private static readonly Dictionary<string, Task<HashSet<string>>> Encoders = new();
+
+    /// <summary>The names ffmpeg lists under <c>-encoders</c>, read once per ffmpeg binary.</summary>
+    private static Task<HashSet<string>> EncodersAsync(string ffmpeg, CancellationToken ct)
+    {
+        lock (Encoders)
+        {
+            if (!Encoders.TryGetValue(ffmpeg, out var task))
+            {
+                Encoders[ffmpeg] = task = Task.Run(async () =>
+                {
+                    var names = new HashSet<string>(StringComparer.Ordinal);
+                    try
+                    {
+                        var output = await ProcessRunner.RunAsync(ffmpeg, ["-hide_banner", "-encoders"], ct).ConfigureAwait(false);
+                        foreach (var line in output.Split('\n'))
+                        {
+                            // " A....D libmp3lame           libmp3lame MP3 ..." – flags, name, description.
+                            var parts = line.Trim().Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
+                            if (parts.Length >= 2 && parts[0].Length == 6)
+                                names.Add(parts[1]);
+                        }
+                    }
+                    catch (ConversionException)
+                    {
+                    }
+                    return names;
+                }, ct);
+            }
+            return task;
+        }
+    }
+
+    /// <summary>Replaces <c>-c:a libvorbis</c> and the like with ffmpeg's built-in encoder when the library isn't compiled in.</summary>
+    private static async Task<List<string>> WithAvailableEncodersAsync(string ffmpeg, List<string> args, CancellationToken ct)
+    {
+        var wanted = args.Where((a, i) => i > 0 && args[i - 1].StartsWith("-c:", StringComparison.Ordinal) && EncoderFallbacks.ContainsKey(a)).ToList();
+        if (wanted.Count == 0)
+            return args;
+        var available = await EncodersAsync(ffmpeg, ct).ConfigureAwait(false);
+        if (available.Count == 0 || wanted.All(available.Contains))
+            return args;
+        var result = new List<string>(args.Count + 4);
+        for (var i = 0; i < args.Count; i++)
+        {
+            if (i > 0 && args[i - 1].StartsWith("-c:", StringComparison.Ordinal) && EncoderFallbacks.TryGetValue(args[i], out var fallbacks) && !available.Contains(args[i]))
+            {
+                var fallback = fallbacks.FirstOrDefault(f => available.Contains(f.Args[0])) ?? fallbacks[^1];
+                result.AddRange(fallback.Args);
+                if (!fallback.KeepsQuality && i + 2 < args.Count && args[i + 1] is "-q:a" or "-b:a")
+                    i += 2;
+            }
+            else
+            {
+                result.Add(args[i]);
+            }
+        }
+        return result;
+    }
+
     /// <summary>Runs ffmpeg with <c>-i input [args] output</c> and maps its time= output to progress.</summary>
     public static Task RunAsync(
         OperationContext ctx,
@@ -70,7 +145,7 @@ public static partial class FfmpegBackend
         {
             try
             {
-                await ProcessRunner.RunAsync(ffmpeg, all, ctx.CancellationToken, OnLine).ConfigureAwait(false);
+                await ProcessRunner.RunAsync(ffmpeg, await WithAvailableEncodersAsync(ffmpeg, all, ctx.CancellationToken).ConfigureAwait(false), ctx.CancellationToken, OnLine).ConfigureAwait(false);
             }
             catch (ConversionException) when (noAudio)
             {

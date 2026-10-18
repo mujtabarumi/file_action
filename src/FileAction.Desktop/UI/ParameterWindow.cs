@@ -5,7 +5,7 @@ using Avalonia.Layout;
 using FileAction.Core;
 using static FileAction.Core.Loc;
 
-namespace FileAction.Linux.UI;
+namespace FileAction.Desktop.UI;
 
 /// <summary>Asks for the values an operation needs (e.g. trim start and end).</summary>
 public sealed class ParameterWindow : Window

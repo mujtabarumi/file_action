@@ -42,9 +42,22 @@ public static class OutputPaths
 
     public static string TempDirectory()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "FileAction", Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(TempRoot(), "FileAction", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
+    }
+
+    /// <summary>
+    /// The system temp folder. On macOS it is "/tmp/" when TMPDIR isn't set (launch agents, <c>env -i</c>), and
+    /// Leptonica – the image library behind tesseract – silently redirects paths that start with "/tmp" to a folder
+    /// of its own, so it never finds the file; "/private/tmp" is the same place without that quirk.
+    /// </summary>
+    public static string TempRoot()
+    {
+        var root = Path.GetTempPath();
+        if (OperatingSystem.IsMacOS() && root.StartsWith("/tmp/", StringComparison.Ordinal))
+            root = "/private" + root;
+        return root;
     }
 
     public static void TryDelete(string path)

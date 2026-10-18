@@ -13,7 +13,7 @@ trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/fileaction/app" "$stage/fileaction/share" "$out"
 cp -a "$publish/." "$stage/fileaction/app/"
 "$publish/fileaction" integrate --export "$stage/fileaction/share" > /dev/null
-cp "$root/src/FileAction.Linux/Assets/fileaction.png" "$stage/fileaction/share/fileaction.png"
+cp "$root/src/FileAction.Desktop/Assets/fileaction.png" "$stage/fileaction/share/fileaction.png"
 
 tarball="FileAction-$version-linux-x64.tar.gz"
 tar -C "$stage" --owner=0 --group=0 -czf "$out/$tarball" fileaction

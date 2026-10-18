@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace FileAction.Linux.Shell;
+namespace FileAction.Desktop.Shell;
 
 /// <summary>The pointer position on X11/XWayland, to open the wheel under the cursor.</summary>
 internal static partial class X11

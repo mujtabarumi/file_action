@@ -1,7 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Platform;
 
-namespace FileAction.Linux.UI;
+namespace FileAction.Desktop.UI;
 
 internal static class AppIcon
 {

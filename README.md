@@ -2,9 +2,9 @@
 
 🇬🇧 **English** · 🇨🇿 [Čeština](README.cs.md)
 
-**Click-free file conversion for Windows (and Linux).** Grab a file, tap a key while dragging, and drop it on a format in a radial wheel. Everything runs locally; your files never leave your PC.
+**Click-free file conversion for Windows, macOS and Linux.** Grab a file, tap a key while dragging, and drop it on a format in a radial wheel. Everything runs locally; your files never leave your computer.
 
-Inspired by the wonderful [Tangerine](https://tangerineformac.com/) for macOS. FileAction is an independent Windows take on the idea and is not affiliated with Tangerine.
+Inspired by the wonderful [Tangerine](https://tangerineformac.com/) for macOS. FileAction is an independent take on the idea (born on Windows, now on macOS and Linux too) and is not affiliated with Tangerine.
 
 <p align="center">
   <img src="docs/screenshots/en/wheel-video-convert.png" width="32%" alt="Convert wheel for a video" />
@@ -88,6 +88,26 @@ On first launch FileAction adds itself to startup and to the File Explorer conte
 
 Requirements: Windows 10 (1809+) or Windows 11, x64.
 
+## macOS
+
+Download `FileAction-x.y.z-macos-arm64.zip` from [Releases](../../releases) (Apple silicon; on an Intel Mac build from source with `-r osx-x64`), unzip it and move `FileAction.app` to Applications. The app isn't notarized yet, so open it the first time with right-click → Open (or `xattr -dr com.apple.quarantine /Applications/FileAction.app`).
+
+FileAction lives in the menu bar and the gesture is the same as on Windows: macOS lets an app watch the keyboard and mouse of other programs once you allow it under **System Settings → Privacy & Security → Accessibility** (the app asks on first start).
+
+| Key | Wheel |
+|---|---|
+| **⇧ Shift** | Convert |
+| **⌃ Control** | Tools |
+| **⌥ Option** | Actions |
+
+- **Keyboard:** select files in Finder and press **⌃ Control + ⌥ Option + Space** (Finder asks once whether FileAction may read its selection).
+- **Right-click in Finder:** **Quick Actions → FileAction…** – added by *Add to Finder and start at login* in the menu (or `fileaction integrate`), which also starts the app at login; `fileaction integrate --remove` undoes both.
+- **Open With:** any file or folder can be opened with FileAction, which brings up the wheel for it.
+- **Drop zone:** *Open the drop zone* in the menu, or `fileaction --drop-zone`.
+- **Command line:** the same as on Linux, from `/Applications/FileAction.app/Contents/MacOS/fileaction` (symlink it to `/usr/local/bin/fileaction`).
+
+Helper programs come from Homebrew: `brew install ffmpeg pandoc tesseract` and `brew install --cask libreoffice`; the app finds them in `/opt/homebrew/bin` even when started from Finder. Settings (the keys, output folder, OCR languages) live in `~/Library/Application Support/FileAction/settings.json`; *Settings…* in the menu opens it. Light and dark mode and the language follow the system.
+
 ## Linux
 
 ```sh
@@ -96,7 +116,7 @@ yay -S fileaction-bin        # Arch Linux (AUR)
 
 Other distributions: download `FileAction-x.y.z-linux-x64.tar.gz` from [Releases](../../releases), unpack it and run `fileaction/app/fileaction` (no .NET needed).
 
-Linux doesn't let apps watch the keyboard and mouse of other programs (Wayland forbids it on purpose), so the "drag and tap a key" gesture is Windows-only. On Linux you use the same wheel like this:
+Linux doesn't let apps watch the keyboard and mouse of other programs (Wayland forbids it on purpose), so the "drag and tap a key" gesture is for Windows and macOS. On Linux you use the same wheel like this:
 
 - **Drop zone:** run `fileaction` (or *FileAction* from the app menu) and drag files onto the wheel. It stays on screen; move it by its middle.
 - **Right-click in the file manager:** `fileaction integrate` adds *FileAction…* to Nautilus (*Scripts* submenu), Dolphin and Nemo (the AUR package installs Dolphin and Nemo for everyone).
@@ -124,11 +144,19 @@ publish\FileAction.exe
 
 `FileAction.exe --self-test <folder>` builds every window offscreen and saves PNG previews in both languages (used by CI).
 
+```sh
+# macOS and Linux (the same Avalonia app)
+dotnet publish src/FileAction.Desktop -c Release -r osx-arm64 --self-contained -o publish-mac   # or linux-x64
+packaging/make-mac-app.sh 1.3.0 publish-mac dist        # FileAction.app, zipped
+packaging/make-linux-package.sh 1.3.0 publish-linux dist
+publish-mac/fileaction --self-test previews             # the same offscreen previews
+```
+
 ### Releasing
 
 Push a commit to `main` whose message starts with `Release v1.2.3` (or push a `v1.2.3` tag, or run the **Build** workflow manually with a version). CI builds the installer and zip and publishes them as a GitHub release. Add a repository secret `RELEASE_TOKEN` (a fine-grained personal access token with *Contents: read and write* on this repository) to publish releases under your own account instead of github-actions.
 
-The same run builds the Linux tarball, installs the AUR package on Arch Linux to test it and, when the `AUR_SSH_PRIVATE_KEY` secret holds the key of the AUR account that maintains `fileaction-bin`, pushes the updated PKGBUILD to the AUR.
+The same run builds the macOS app bundle and the Linux tarball, installs the AUR package on Arch Linux to test it and, when the `AUR_SSH_PRIVATE_KEY` secret holds the key of the AUR account that maintains `fileaction-bin`, pushes the updated PKGBUILD to the AUR.
 
 ## Project layout
 
@@ -137,7 +165,8 @@ src/FileAction.Core     conversions and tools (cross-platform library, also test
   Backends/             ImageMagick, FFmpeg, Pandoc, LibreOffice, PDF, spreadsheets, subtitles, archives
   Operations/Catalog.cs every slice on the Convert and Tools wheels
   Loc.cs                English / Czech strings
-src/FileAction.Linux    the Linux app (Avalonia): drop zone, wheel, CLI, file manager integration
+src/FileAction.Desktop  the macOS and Linux app (Avalonia): wheel, drop zone, CLI, file manager integration
+  Mac/                  menu bar, the drag gesture (a CoreGraphics event tap), Finder selection and Quick Action
 src/FileAction.App      the Windows app (WPF)
   Input/GlobalInput.cs  global mouse and keyboard hooks (the “drag + tap” gesture)
   Wheel/                the radial menu and when it opens
@@ -146,12 +175,12 @@ src/FileAction.App      the Windows app (WPF)
   Shell/                tray icon, hotkey, context menu, single instance
 tests/FileAction.Tests  unit tests plus integration tests that run every operation on sample files
 installer/              Inno Setup
-packaging/              Linux tarball and the AUR PKGBUILD template
+packaging/              macOS app bundle, Linux tarball and the AUR PKGBUILD template
 ```
 
 ## Differences from Tangerine
 
-- Shift / Ctrl / Alt instead of Shift / Command / Control.
+- Shift / Ctrl / Alt on Windows and Shift / Control / Option on macOS instead of Shift / Command / Control (any of the four modifiers can be assigned in `settings.json`).
 - Apple formats (Pages, Keynote, RTFD) and writing HEIC are not supported; HEIC can be opened.
 - PDF → DOCX/EPUB/HTML converts the text, not the exact page layout (use PDF → PPTX or images for that).
 - Tangerine's “AirDrop” action is **Share** on Windows (Nearby Sharing, Teams, Mail…).

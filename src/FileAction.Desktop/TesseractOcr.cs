@@ -3,15 +3,17 @@ using FileAction.Core;
 using FileAction.Core.Backends;
 using static FileAction.Core.Loc;
 
-namespace FileAction.Linux;
+namespace FileAction.Desktop;
 
-/// <summary>"Extract text" on Linux: OCR with tesseract (optional dependency).</summary>
+/// <summary>"Extract text" on Linux and macOS: OCR with tesseract (optional dependency).</summary>
 public sealed class TesseractOcr : Operation
 {
-    private static readonly Lazy<string?> Exe = new(() => FindInPath("tesseract"));
-    private readonly LinuxSettings _settings;
+    private static readonly Lazy<string?> Exe = new(() => ToolLocator.Which("tesseract"));
 
-    public TesseractOcr(LinuxSettings settings)
+    private static string InstallHint => OperatingSystem.IsMacOS() ? "brew install tesseract tesseract-lang" : "sudo pacman -S tesseract tesseract-data-eng";
+    private readonly DesktopSettings _settings;
+
+    public TesseractOcr(DesktopSettings settings)
         : base("tools.ocr", WheelKind.Tools, T("Text z obrázku", "Extract text"), Glyphs.Text, "OCR")
     {
         _settings = settings;
@@ -24,7 +26,7 @@ public sealed class TesseractOcr : Operation
 
     public override async Task<OperationResult> ExecuteAsync(IReadOnlyList<FileItem> items, OperationContext ctx)
     {
-        var exe = Exe.Value ?? throw new ConversionException(T("Chybí tesseract (sudo pacman -S tesseract tesseract-data-eng).", "tesseract is missing (sudo pacman -S tesseract tesseract-data-eng)."));
+        var exe = Exe.Value ?? throw new ConversionException(T($"Chybí tesseract ({InstallHint}).", $"tesseract is missing ({InstallHint})."));
         var languages = await LanguagesAsync(exe, ctx.CancellationToken);
         var outputs = new List<string>();
         for (var i = 0; i < items.Count; i++)
@@ -85,10 +87,4 @@ public sealed class TesseractOcr : Operation
             return "";
         }
     }
-
-    public static string? FindInPath(string name) =>
-        (Environment.GetEnvironmentVariable("PATH") ?? "")
-            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-            .Select(dir => Path.Combine(dir, name))
-            .FirstOrDefault(File.Exists);
 }
